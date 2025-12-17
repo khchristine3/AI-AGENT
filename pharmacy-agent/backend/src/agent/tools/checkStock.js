@@ -1,18 +1,21 @@
 /**
  * Check Stock Tool
  *
- * This tool checks the current stock availability and price of a medication
- * in the pharmacy database. It provides detailed information about whether a
- * medication is in stock, quantity available, pricing, and prescription requirements.
+ * This tool checks the current stock availability and price of medications
+ * in the pharmacy inventory. It implements intelligent search with multiple
+ * fallback strategies to help users find medications even with typos or
+ * partial names.
  *
  * Search Strategy:
  * 1. Exact name match (case-insensitive)
  * 2. Partial name match (LIKE search)
+ * 3. Active ingredient match
+ * 4. List all medications if nothing found
  *
  * Returns:
- * - For exact match: Medication stock details including quantity, price, and in-stock status
- * - For partial matches: Suggestions for possible medications
- * - For no matches: Helpful error message
+ * - For exact match: Stock quantity, price, and prescription requirement
+ * - For partial matches: Suggestions with stock status
+ * - For no matches: Complete medication inventory
  *
  * @module agent/tools/checkStock
  */
@@ -22,7 +25,8 @@ const db = require('../../database/db');
 /**
  * Check Stock Function
  *
- * Queries the database to retrieve stock and pricing information for a medication.
+ * Queries the database to check if a medication is in stock and returns
+ * availability information along with price and prescription requirements.
  *
  * @param {Object} params - Function parameters
  * @param {string} params.medication_name - Name of the medication to check
@@ -31,18 +35,18 @@ const db = require('../../database/db');
  * @example
  * // Exact match found
  * const result = await checkStock({ medication_name: 'Acamol' });
- * // Returns: { success: true, data: { medication_name: 'Acamol', in_stock: true, quantity_available: 150, price: 10.5, ... } }
+ * // Returns: { success: true, data: { medication_name: 'Acamol', in_stock: true, ... } }
  *
  * @example
  * // Medication not found, returns suggestions
  * const result = await checkStock({ medication_name: 'Acamo' });
- * // Returns: { success: false, error: 'MEDICATION_NOT_FOUND', suggestions: [...], hint: 'Did you mean...' }
+ * // Returns: { success: false, error: 'MEDICATION_NOT_FOUND', suggestions: [...] }
  */
 async function checkStock({ medication_name }) {
   try {
     const searchTerm = medication_name.trim().toLowerCase();
     
-    // Try Exact match
+    // 1. Try exact match
     let medication = db.prepare(`
       SELECT name, stock_quantity, price, requires_prescription 
       FROM medications 
@@ -67,18 +71,18 @@ async function checkStock({ medication_name }) {
       };
     }
 
-    //Fallback: Try partial match
-    const similar = db.prepare(`
+    // 2. Fallback: Try partial name match
+    const similarByName = db.prepare(`
       SELECT name, stock_quantity FROM medications 
       WHERE LOWER(name) LIKE ?
     `).all(`%${searchTerm}%`);
 
-    if (similar.length > 0) {
+    if (similarByName.length > 0) {
       return {
         success: false,
         error: 'MEDICATION_NOT_FOUND',
         message: `Medication "${medication_name}" not found.`,
-        suggestions: similar.map(m => ({
+        suggestions: similarByName.map(m => ({
           name: m.name,
           in_stock: m.stock_quantity > 0
         })),
@@ -86,13 +90,41 @@ async function checkStock({ medication_name }) {
       };
     }
 
-    // No matches
+    // 3. Fallback: Try search by active ingredient
+    const similarByIngredient = db.prepare(`
+      SELECT name, active_ingredient, stock_quantity FROM medications 
+      WHERE LOWER(active_ingredient) LIKE ?
+    `).all(`%${searchTerm}%`);
+
+    if (similarByIngredient.length > 0) {
+      return {
+        success: false,
+        error: 'MEDICATION_NOT_FOUND',
+        message: `Medication "${medication_name}" not found, but we have medications with similar ingredients.`,
+        suggestions: similarByIngredient.map(m => ({
+          name: m.name,
+          active_ingredient: m.active_ingredient,
+          in_stock: m.stock_quantity > 0
+        })),
+        hint: 'These medications contain a similar active ingredient.'
+      };
+    }
+
+    // 4. Nothing found - list all available medications
+    const allMedications = db.prepare(`
+      SELECT name, stock_quantity FROM medications
+      ORDER BY name
+    `).all();
+
     return {
       success: false,
       error: 'MEDICATION_NOT_FOUND',
       message: `Medication "${medication_name}" was not found in our inventory.`,
-      suggestions: [],
-      hint: 'Please check the spelling or ask for available medications.'
+      suggestions: allMedications.map(m => ({
+        name: m.name,
+        in_stock: m.stock_quantity > 0
+      })),
+      hint: 'Here are the medications we carry.'
     };
 
   } catch (error) {
