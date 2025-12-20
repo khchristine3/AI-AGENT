@@ -157,7 +157,7 @@ router.post('/chat', async (req, res) => {
  * console.log(data.response);
  */
 router.post('/chat/simple', async (req, res) => {
-  const { message, conversationHistory = [] } = req.body;
+  const { message, userId, conversationHistory = [] } = req.body;
 
   // Validate input
   if (!message || typeof message !== 'string' || message.trim() === '') {
@@ -170,7 +170,7 @@ router.post('/chat/simple', async (req, res) => {
 
   try {
     // Execute agent without streaming, wait for complete response
-    const result = await handleChat(message.trim(), conversationHistory);
+    const result = await handleChat(message.trim(), userId, conversationHistory);
     res.json(result);
 
   } catch (error) {

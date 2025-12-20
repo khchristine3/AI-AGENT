@@ -1,14 +1,13 @@
 /**
  * Get User Prescriptions Tool
  *
- * This tool verifies a user's identity and retrieves their prescription
- * information from the pharmacy database. It implements two-factor verification
- * using ID number and phone number for security.
+ * This tool retrieves prescription information for an authenticated user
+ * from the pharmacy database using their user ID (1-10).
  *
- * Security Features:
- * - Two-factor verification (ID number + last 4 digits of phone)
- * - Input validation for format and completeness
- * - Returns user allergy information for safety checks
+ * Authentication:
+ * - User is already authenticated via the UI
+ * - User ID (1-10) is provided by the system automatically
+ * - No additional verification needed
  *
  * Prescription Processing:
  * - Calculates expiration status
@@ -24,88 +23,66 @@ const db = require('../../database/db');
 /**
  * Get User Prescriptions Function
  *
- * Verifies user identity using two-factor authentication (ID + phone) and
- * retrieves all prescriptions with detailed status information including
- * expiration dates, refill counts, and stock availability.
+ * Retrieves all prescriptions for the authenticated user with detailed status
+ * information including expiration dates, refill counts, and stock availability.
  *
  * @param {Object} params - Function parameters
- * @param {string} params.id_number - User's ID number (Teudat Zehut)
- * @param {string} params.phone_last_4 - Last 4 digits of registered phone number
+ * @param {number} params.user_id - User's database ID (1-10)
  * @returns {Promise<Object>} Result object with user info, prescriptions, and summary
  *
  * @example
- * // Successful verification and retrieval
- * const result = await getUserPrescriptions({
- *   id_number: '123456789',
- *   phone_last_4: '4567'
- * });
+ * // Successful retrieval
+ * const result = await getUserPrescriptions({ user_id: 1 });
  * // Returns: {
  * //   success: true,
  * //   data: {
  * //     user: { name: 'David Cohen', allergies: ['Penicillin'] },
  * //     prescriptions: [...],
- * //     summary: { total_prescriptions: 2, active_prescriptions: 1, ... }
+ * //     summary: { total_prescriptions: 1, active_prescriptions: 0, refillable_now: 0 }
  * //   }
  * // }
  *
  * @example
- * // Verification failed
- * const result = await getUserPrescriptions({
- *   id_number: '123456789',
- *   phone_last_4: '9999'
- * });
- * // Returns: { success: false, error: 'VERIFICATION_FAILED', message: '...' }
+ * // User not found
+ * const result = await getUserPrescriptions({ user_id: 999 });
+ * // Returns: { success: false, error: 'USER_NOT_FOUND', message: 'User not found.' }
  */
-async function getUserPrescriptions({ id_number, phone_last_4 }) {
+async function getUserPrescriptions({ user_id }) {
   try {
-    // Input validation
-    if (!id_number || !phone_last_4) {
+    // Validate user_id parameter
+    if (!user_id || typeof user_id !== 'number') {
       return {
         success: false,
-        error: 'MISSING_CREDENTIALS',
-        message: 'Both ID number and last 4 digits of phone are required for verification.'
+        error: 'INVALID_USER_ID',
+        message: 'Valid user ID is required.'
       };
     }
 
-    const cleanId = id_number.toString().trim();
-    const cleanPhone = phone_last_4.toString().trim();
-
-    // Validate phone format
-    if (cleanPhone.length !== 4 || !/^\d{4}$/.test(cleanPhone)) {
+    // Validate user_id is in valid range (1-10)
+    if (user_id < 1 || user_id > 10) {
       return {
         success: false,
-        error: 'INVALID_PHONE_FORMAT',
-        message: 'Please provide exactly 4 digits from your phone number.'
+        error: 'INVALID_USER_ID',
+        message: 'User ID must be between 1 and 10.'
       };
     }
 
-    // Find user by ID
+    // Get user by database ID
     const user = db.prepare(`
       SELECT id, name, phone, id_number, allergies 
       FROM users 
-      WHERE id_number = ?
-    `).get(cleanId);
+      WHERE id = ?
+    `).get(user_id);
 
     if (!user) {
       return {
         success: false,
         error: 'USER_NOT_FOUND',
-        message: 'No account found with this ID number. Please check and try again.'
+        message: 'User not found. Please contact support.'
       };
     }
 
-    // Verify phone (last 4 digits)
-    const userPhoneLast4 = user.phone.replace(/\D/g, '').slice(-4);
-    
-    if (userPhoneLast4 !== cleanPhone) {
-      return {
-        success: false,
-        error: 'VERIFICATION_FAILED',
-        message: 'Phone number verification failed. Please check the last 4 digits and try again.'
-      };
-    }
-
-    // Get prescriptions
+    // Get prescriptions for this user
     const prescriptions = db.prepare(`
       SELECT 
         p.id as prescription_id,
@@ -125,7 +102,7 @@ async function getUserPrescriptions({ id_number, phone_last_4 }) {
       ORDER BY p.valid_until DESC
     `).all(user.id);
 
-    // Process prescriptions
+    // Process prescriptions to calculate status
     const today = new Date().toISOString().split('T')[0];
     
     const processedPrescriptions = prescriptions.map(rx => {

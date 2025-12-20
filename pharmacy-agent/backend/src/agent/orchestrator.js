@@ -172,32 +172,23 @@ async function handleChatStreaming(userMessage, conversationHistory = [], onChun
  * Manages a complete conversation turn with the AI agent, executing tool calls
  * as needed and returning the final response once complete.
  *
- * Agent Flow:
- * 1. Receives user message and conversation history
- * 2. Sends to OpenAI with available tools
- * 3. If agent wants to call tools, executes them and continues loop
- * 4. Once agent has all needed info, returns final response
- * 5. Updates and returns conversation history
- *
  * @param {string} userMessage - The user's input message
+ * @param {number} userId - The authenticated user's database ID (1-10)
  * @param {Array} conversationHistory - Previous messages in the conversation
  * @param {Function|null} onChunk - Optional callback for response content
  * @returns {Promise<Object>} Response object with success status, message, and updated history
- *
- * @example
- * const result = await handleChat("What medications do we have?", []);
- * console.log(result.response); // AI's response
- * console.log(result.conversationHistory); // Updated history
  */
-async function handleChat(userMessage, conversationHistory = [], onChunk = null) {
+async function handleChat(userMessage, userId, conversationHistory = [], onChunk = null) {
   console.log('\n===========================================');
   console.log('Agent Starting');
   console.log('===========================================');
+  console.log('User ID:', userId);
   console.log('User message:', userMessage);
 
   // Build the message array with system prompt, history, and new user message
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: `CONTEXT: The current user is authenticated with database ID: ${userId}. When calling get_user_prescriptions, the user_id parameter will be provided automatically - do NOT ask the user for identification.` },
     ...conversationHistory,
     { role: 'user', content: userMessage }
   ];
@@ -215,29 +206,39 @@ async function handleChat(userMessage, conversationHistory = [], onChunk = null)
       model: config.openai.model,
       messages: messages,
       tools: TOOL_DEFINITIONS,
-      tool_choice: 'auto' // Let the model decide when to use tools
+      tool_choice: 'auto'
     });
 
     const choice = response.choices[0];
     const assistantMessage = choice.message;
 
-    // Add assistant's message to conversation
-    messages.push(assistantMessage);
-
-    // Handle tool calls: execute requested tools and add results to conversation
+    // ============================================
+    // HANDLE TOOL CALLS FIRST
+    // ============================================
     if (choice.finish_reason === 'tool_calls' && assistantMessage.tool_calls) {
       console.log(`Agent wants to call ${assistantMessage.tool_calls.length} tool(s)`);
 
+      // Add assistant's message with tool calls
+      messages.push(assistantMessage);
+
+      // Execute each tool call
       for (const toolCall of assistantMessage.tool_calls) {
         const toolName = toolCall.function.name;
-        const toolArgs = JSON.parse(toolCall.function.arguments);
+        let toolArgs = JSON.parse(toolCall.function.arguments);
 
-        console.log(`Calling: ${toolName}`);
+        // Auto-inject user_id for user-specific tools
+        if (toolName === 'get_user_prescriptions') {
+          toolArgs.user_id = userId;
+          console.log(`→ Injecting user_id=${userId} into ${toolName}`);
+        }
 
-        // Execute the tool and get result
+        console.log(`→ Calling: ${toolName}`, toolArgs);
+
+        // Execute the tool
         const toolResult = await executeTool(toolName, toolArgs);
+        console.log(`→ Result:`, JSON.stringify(toolResult, null, 2));
 
-        // Add tool result to messages so agent can use it
+        // Add tool result to messages
         messages.push({
           role: 'tool',
           tool_call_id: toolCall.id,
@@ -249,9 +250,11 @@ async function handleChat(userMessage, conversationHistory = [], onChunk = null)
       continue;
     }
 
-    // Final response: agent is done and ready to respond to user
+    // ============================================
+    // HANDLE FINAL RESPONSE
+    // ============================================
     if (choice.finish_reason === 'stop') {
-      console.log(`\nAgent finished after ${stepCount} step(s)`);
+      console.log(`\n✅ Agent finished after ${stepCount} step(s)`);
 
       const finalContent = assistantMessage.content || '';
 
@@ -260,7 +263,7 @@ async function handleChat(userMessage, conversationHistory = [], onChunk = null)
         onChunk(finalContent);
       }
 
-      // Build updated conversation history
+      // Build updated conversation history (for frontend state)
       const updatedHistory = [
         ...conversationHistory,
         { role: 'user', content: userMessage },
@@ -275,12 +278,14 @@ async function handleChat(userMessage, conversationHistory = [], onChunk = null)
       };
     }
 
-    // Unexpected finish reason
+    // ============================================
+    // HANDLE UNEXPECTED FINISH REASONS
+    // ============================================
     console.warn(`Unexpected finish_reason: ${choice.finish_reason}`);
     break;
   }
 
-  // Max steps reached - safety mechanism activated
+  // Max steps reached - safety mechanism
   console.error(`Max steps (${maxSteps}) reached`);
   return {
     success: false,
@@ -289,6 +294,5 @@ async function handleChat(userMessage, conversationHistory = [], onChunk = null)
     conversationHistory: conversationHistory
   };
 }
-
 // Export both chat handlers
 module.exports = { handleChat, handleChatStreaming };
