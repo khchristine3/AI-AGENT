@@ -1,0 +1,125 @@
+/**
+ * InputBar Component Styles
+ * 
+ * Styles for the message input area including textarea,
+ * send button, and optional action buttons.
+ */
+
+.input-bar {
+  border-top: 1px solid #e0e0e0;
+  background-color: white;
+  padding: 16px;
+}
+
+.input-container {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.input-textarea {
+  flex: 1;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-family: inherit;
+  line-height: 1.5;
+  border: 2px solid #d0d0d0;
+  border-radius: 12px;
+  resize: none;
+  min-height: 44px;
+  max-height: 150px;
+  transition: border-color 0.2s ease;
+}
+
+.input-textarea:focus {
+  outline: none;
+  border-color: #0084ff;
+}
+
+.input-textarea:disabled {
+  background-color: #f5f5f5;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.input-textarea::placeholder {
+  color: #999;
+}
+
+.input-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.send-button,
+.clear-button {
+  padding: 12px 16px;
+  font-size: 20px;
+  border: none;
+  border-radius: 12px;
+  background-color: #0084ff;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.send-button:hover:not(:disabled) {
+  background-color: #0073e6;
+  transform: scale(1.05);
+}
+
+.send-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.clear-button {
+  background-color: #f0f0f0;
+  color: #666;
+}
+
+.clear-button:hover:not(:disabled) {
+  background-color: #e0e0e0;
+}
+
+.loading-indicator {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #666;
+  font-style: italic;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .input-bar {
+    padding: 12px;
+  }
+
+  .input-container {
+    gap: 8px;
+  }
+
+  .send-button,
+  .clear-button {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 18px;
+  }
+}
