@@ -1,39 +1,11 @@
-import React, { useState } from "react";
+import React from "react";
 import { MessageBubble } from "./MessageBubble/MessageBubble.jsx";
-import './ChatWindow.css';
 import { InputBar } from "./InputBar/InputBar.jsx";
+import { useChat } from "../../../hooks/useChat";
+import './ChatWindow.css';
 
 export default function ChatWindow() {
-  // Dummy messages for testing
-  // eslint-disable-next-line no-unused-vars
-  const [messages, setMessages] = useState([
-    { role: "user", content: "Hi, I need my prescription.", timestamp: new Date().toISOString() },
-    { role: "assistant", content: "Sure! Can you tell me your prescription ID?", timestamp: new Date().toISOString() },
-    { role: "error", content: "Failed to fetch previous messages.", timestamp: new Date().toISOString() },
-  ]);
-
-  // Handle sending a new message
-  const handleSend = (text) => {
-    const newMessage = {
-      role: "user",
-      content: text,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, newMessage]);
-
-    setTimeout(() => {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "Received: " + text,
-        timestamp: new Date().toISOString()
-      }]);
-    }, 1000);
-  };
-
-  // Handle clearing chat
-  const handleClear = () => {
-    setMessages([]);
-  };
+  const { messages, isLoading, sendMessage, clearMessages } = useChat();
 
   return (
     <div className="chat-window">
@@ -42,9 +14,9 @@ export default function ChatWindow() {
       ))}
 
       <InputBar 
-        onSend={handleSend} 
-        onClear={handleClear} 
-        isLoading={false} 
+        onSend={sendMessage} 
+        onClear={clearMessages} 
+        isLoading={isLoading} 
       />
     </div>
   );
