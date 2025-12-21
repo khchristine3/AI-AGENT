@@ -3,7 +3,7 @@ import { MessageBubble } from "./MessageBubble/MessageBubble.jsx";
 import { InputBar } from "./InputBar/InputBar.jsx";
 import './ChatWindow.css';
 
-export default function ChatWindow({ chatState }) {  // ✅ FIXED: Receive chatState
+export default function ChatWindow({ chatState }) {
   const { messages, isLoading, sendMessage, clearMessages } = chatState;
 
   return (
