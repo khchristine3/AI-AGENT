@@ -33,32 +33,23 @@ const openai = new OpenAI({
  * better user experience. Tool calls are executed normally (non-streaming),
  * but the final response is streamed in real-time.
  *
- * Agent Flow:
- * 1. Receives user message and conversation history
- * 2. Executes tool calls normally (non-streaming)
- * 3. Once ready to respond, creates a new streaming completion
- * 4. Streams response chunks via onChunk callback
- * 5. Returns complete response and updated history when done
- *
  * @param {string} userMessage - The user's input message
+ * @param {number} userId - The authenticated user's database ID (1-10)
  * @param {Array} conversationHistory - Previous messages in the conversation
  * @param {Function} onChunk - Callback function to receive response chunks as they arrive
  * @returns {Promise<Object>} Response object with success status, full message, and updated history
- *
- * @example
- * await handleChatStreaming("Tell me about Acamol", [], (chunk) => {
- *   process.stdout.write(chunk); // Stream to console
- * });
  */
-async function handleChatStreaming(userMessage, conversationHistory = [], onChunk) {
+async function handleChatStreaming(userMessage, userId, conversationHistory = [], onChunk) {
   console.log('\n===========================================');
   console.log('Agent Starting (Streaming Mode)');
   console.log('===========================================');
+  console.log('User ID:', userId);
   console.log('User message:', userMessage);
 
   // Build the message array with system prompt, history, and new user message
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: `CONTEXT: The current user is authenticated with database ID: ${userId}. When calling get_user_prescriptions, the user_id parameter will be provided automatically - do NOT ask the user for identification.` },
     ...conversationHistory,
     { role: 'user', content: userMessage }
   ];
@@ -82,20 +73,31 @@ async function handleChatStreaming(userMessage, conversationHistory = [], onChun
     const choice = response.choices[0];
     const assistantMessage = choice.message;
 
-    // Handle tool calls: execute requested tools
+    // ============================================
+    // HANDLE TOOL CALLS FIRST
+    // ============================================
     if (choice.finish_reason === 'tool_calls' && assistantMessage.tool_calls) {
       console.log(`Agent wants to call ${assistantMessage.tool_calls.length} tool(s)`);
 
+      // Add assistant's message with tool calls
       messages.push(assistantMessage);
 
+      // Execute each tool call
       for (const toolCall of assistantMessage.tool_calls) {
         const toolName = toolCall.function.name;
-        const toolArgs = JSON.parse(toolCall.function.arguments);
+        let toolArgs = JSON.parse(toolCall.function.arguments);
 
-        console.log(`Calling: ${toolName}`);
+        // Auto-inject user_id for user-specific tools
+        if (toolName === 'get_user_prescriptions') {
+          toolArgs.user_id = userId;
+          console.log(`→ Injecting user_id=${userId} into ${toolName}`);
+        }
 
-        // Execute the tool and get result
+        console.log(`→ Calling: ${toolName}`, toolArgs);
+
+        // Execute the tool
         const toolResult = await executeTool(toolName, toolArgs);
+        console.log(`→ Result:`, JSON.stringify(toolResult, null, 2));
 
         // Add tool result to messages
         messages.push({
@@ -109,9 +111,11 @@ async function handleChatStreaming(userMessage, conversationHistory = [], onChun
       continue;
     }
 
-    // Ready for final response: stream it token-by-token
+    // ============================================
+    // HANDLE FINAL RESPONSE WITH STREAMING
+    // ============================================
     if (choice.finish_reason === 'stop') {
-      console.log('\nStreaming final response...');
+      console.log('\n🔄 Starting streaming response...');
 
       // Create a new streaming completion
       const stream = await openai.chat.completions.create({
@@ -121,20 +125,36 @@ async function handleChatStreaming(userMessage, conversationHistory = [], onChun
       });
 
       let fullContent = '';
+      let chunkCount = 0;
 
-      // Process each chunk as it arrives
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || '';
-        if (content) {
-          fullContent += content;
-          // Send chunk to callback for real-time display
-          if (onChunk) {
-            onChunk(content);
+      console.log('📡 Stream created, processing chunks...');
+
+      try {
+        // Process each chunk as it arrives
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || '';
+          
+          if (content) {
+            chunkCount++;
+            fullContent += content;
+            
+            // Log first 20 chars of each chunk
+            console.log(`📨 Chunk ${chunkCount}: "${content.substring(0, 20)}${content.length > 20 ? '...' : ''}"`);
+            
+            // Send chunk to callback for real-time display
+            if (onChunk) {
+              onChunk(content);
+            }
           }
         }
+      } catch (streamError) {
+        console.error('❌ Stream error:', streamError);
+        throw streamError;
       }
 
-      console.log(`\nAgent finished after ${stepCount} step(s)`);
+      console.log(`\n✅ Streaming complete!`);
+      console.log(`📊 Total chunks sent: ${chunkCount}`);
+      console.log(`📝 Full content length: ${fullContent.length} characters`);
 
       // Build updated conversation history with full response
       const updatedHistory = [
@@ -151,13 +171,15 @@ async function handleChatStreaming(userMessage, conversationHistory = [], onChun
       };
     }
 
-    // Unexpected finish reason
-    console.warn(`Unexpected finish_reason: ${choice.finish_reason}`);
+    // ============================================
+    // HANDLE UNEXPECTED FINISH REASONS
+    // ============================================
+    console.warn(`⚠️ Unexpected finish_reason: ${choice.finish_reason}`);
     break;
   }
 
   // Max steps reached - safety mechanism activated
-  console.error(`Max steps (${maxSteps}) reached`);
+  console.error(`❌ Max steps (${maxSteps}) reached`);
   return {
     success: false,
     error: 'MAX_STEPS_REACHED',
@@ -254,7 +276,7 @@ async function handleChat(userMessage, userId, conversationHistory = [], onChunk
     // HANDLE FINAL RESPONSE
     // ============================================
     if (choice.finish_reason === 'stop') {
-      console.log(`\n✅ Agent finished after ${stepCount} step(s)`);
+      console.log(`\nAgent finished after ${stepCount} step(s)`);
 
       const finalContent = assistantMessage.content || '';
 
