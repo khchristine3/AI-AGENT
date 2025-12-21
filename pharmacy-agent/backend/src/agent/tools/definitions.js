@@ -14,7 +14,7 @@
  * Available Tools:
  * - get_medication_info: Retrieve detailed medication information
  * - check_stock: Check medication availability and pricing
- * - get_user_prescriptions: Verify identity and fetch prescriptions
+ * - get_user_prescriptions: Retrieve prescriptions for authenticated user
  *
  * These definitions follow the OpenAI Function Calling specification.
  *
@@ -78,32 +78,28 @@ Returns availability status, quantity in stock, and current price.`,
     type: "function",
     function: {
       name: "get_user_prescriptions",
-      description: `Verifies a customer's identity and retrieves their prescription information.
+      description: `Retrieves prescription information for the currently authenticated user.
 
-IMPORTANT: This tool requires identity verification. The customer must provide:
-1. Their ID number (Teudat Zehut - 9 digits)
-2. The last 4 digits of their registered phone number
+IMPORTANT: The user is already authenticated via the UI. The user_id parameter is provided 
+automatically by the system - DO NOT ask the user for their ID number or any identification.
 
 Use this tool when the customer:
 - Wants to refill a prescription
 - Asks about their current prescriptions
 - Needs to check prescription validity or remaining refills
+- Asks "my prescriptions" or "do I have any prescriptions?"
 
-Returns the customer's profile (including allergies) and their active prescriptions.
-If verification fails, returns an error with guidance for the customer.`,
+The tool will automatically use the authenticated user's ID to retrieve their prescriptions,
+allergy information, and medical profile.`,
       parameters: {
         type: "object",
         properties: {
-          id_number: {
-            type: "string",
-            description: "The customer's ID number (Teudat Zehut). Should be 9 digits."
-          },
-          phone_last_4: {
-            type: "string",
-            description: "The last 4 digits of the customer's registered phone number."
+          user_id: {
+            type: "integer",
+            description: "The authenticated user's database ID (1-10). This is provided automatically by the system based on the logged-in user."
           }
         },
-        required: ["id_number", "phone_last_4"]
+        required: ["user_id"]
       }
     }
   }

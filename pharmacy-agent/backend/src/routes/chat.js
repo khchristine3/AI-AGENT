@@ -28,6 +28,7 @@ const router = express.Router();
  *
  * Request Body:
  * @property {string} message - The user's message (required, non-empty)
+ * @property {number} userId - The user ID (required, must be between 1-10)
  * @property {Array} conversationHistory - Previous messages (optional, default: [])
  *
  * SSE Event Types:
@@ -41,22 +42,23 @@ const router = express.Router();
  * data: {"type": "error", "message": "error description"}
  *
  * @route POST /api/chat
- * @param {Object} req.body.message - User's chat message
+ * @param {string} req.body.message - User's chat message
+ * @param {number} req.body.userId - User ID (1-10)
  * @param {Array} req.body.conversationHistory - Conversation context
  * @returns {Stream} Server-Sent Events stream with agent response
  *
  * @example
- * // Client-side usage with EventSource API
+ * // Client-side usage with fetch API
  * fetch('/api/chat', {
  *   method: 'POST',
  *   headers: { 'Content-Type': 'application/json' },
- *   body: JSON.stringify({ message: 'Tell me about Acamol', conversationHistory: [] })
+ *   body: JSON.stringify({ message: 'Tell me about Acamol', userId: 1, conversationHistory: [] })
  * });
  */
 router.post('/chat', async (req, res) => {
-  const { message, conversationHistory = [] } = req.body;
+  const { message, userId, conversationHistory = [] } = req.body;
 
-  // Validate input: ensure message is a non-empty string
+  // Validate input
   if (!message || typeof message !== 'string' || message.trim() === '') {
     return res.status(400).json({
       success: false,
@@ -65,34 +67,69 @@ router.post('/chat', async (req, res) => {
     });
   }
 
+  if (!userId || typeof userId !== 'number' || userId < 1 || userId > 10) {
+    return res.status(400).json({
+      success: false,
+      error: 'INVALID_USER_ID',
+      message: 'User ID is required and must be between 1 and 10.'
+    });
+  }
+
   console.log('\n========== New Chat Request ==========');
+  console.log('User ID:', userId);
   console.log('Message:', message);
 
-  // Set up Server-Sent Events headers for streaming
+  //Set streaming headers with ALL anti-buffering options
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  res.setHeader('Content-Encoding', 'none'); // Disable compression
+  
+  // Send initial comment to establish connection
+  res.write(':ok\n\n');
+  
+  // Flush headers and initial data
+  if (res.flushHeaders) {
+    res.flushHeaders();
+  }
 
-  // Handle client disconnect gracefully
+  // Handle client disconnect
   req.on('close', () => {
     console.log('Client disconnected');
   });
 
   try {
-    // Callback function: sends each response chunk to client via SSE
+    let chunksSent = 0;
+    
+    // Callback: sends each chunk via SSE
     const onChunk = (chunk) => {
+      chunksSent++;
       const data = JSON.stringify({ type: 'chunk', content: chunk });
       res.write(`data: ${data}\n\n`);
+      
+      //Explicit flush after EVERY chunk
+      if (res.flush) {
+        res.flush();
+      }
+      
+      // Log every 10th chunk
+      if (chunksSent % 10 === 0) {
+        console.log(`Sent ${chunksSent} chunks to client`);
+      }
     };
 
-    // Execute the agent with streaming enabled
+    // Execute agent with streaming
     const result = await handleChatStreaming(
       message.trim(),
+      userId,
       conversationHistory,
       onChunk
     );
 
-    // Send final event with complete conversation history and metadata
+    console.log(`Total chunks sent to client: ${chunksSent}`);
+
+    // Send final event
     const doneData = JSON.stringify({
       type: 'done',
       success: result.success,
@@ -100,14 +137,17 @@ router.post('/chat', async (req, res) => {
       toolCallsCount: result.toolCallsCount
     });
     res.write(`data: ${doneData}\n\n`);
+    
+    if (res.flush) {
+      res.flush();
+    }
 
-    // Close the SSE stream
+    // Close stream
     res.end();
 
   } catch (error) {
     console.error('Chat error:', error);
 
-    // Send error event to client
     const errorData = JSON.stringify({
       type: 'error',
       message: 'An error occurred while processing your request.'
@@ -131,6 +171,7 @@ router.post('/chat', async (req, res) => {
  *
  * Request Body:
  * @property {string} message - The user's message (required, non-empty)
+ * @property {number} userId - The user ID (required, must be between 1-10)
  * @property {Array} conversationHistory - Previous messages (optional, default: [])
  *
  * Response Format (JSON):
@@ -142,7 +183,8 @@ router.post('/chat', async (req, res) => {
  * }
  *
  * @route POST /api/chat/simple
- * @param {Object} req.body.message - User's chat message
+ * @param {string} req.body.message - User's chat message
+ * @param {number} req.body.userId - User ID (1-10)
  * @param {Array} req.body.conversationHistory - Conversation context
  * @returns {Object} JSON response with complete agent response and metadata
  *
@@ -151,13 +193,13 @@ router.post('/chat', async (req, res) => {
  * const response = await fetch('/api/chat/simple', {
  *   method: 'POST',
  *   headers: { 'Content-Type': 'application/json' },
- *   body: JSON.stringify({ message: 'What is Acamol?', conversationHistory: [] })
+ *   body: JSON.stringify({ message: 'What is Acamol?', userId: 1, conversationHistory: [] })
  * });
  * const data = await response.json();
  * console.log(data.response);
  */
 router.post('/chat/simple', async (req, res) => {
-  const { message, conversationHistory = [] } = req.body;
+  const { message, userId, conversationHistory = [] } = req.body;
 
   // Validate input
   if (!message || typeof message !== 'string' || message.trim() === '') {
@@ -170,7 +212,7 @@ router.post('/chat/simple', async (req, res) => {
 
   try {
     // Execute agent without streaming, wait for complete response
-    const result = await handleChat(message.trim(), conversationHistory);
+    const result = await handleChat(message.trim(), userId, conversationHistory);
     res.json(result);
 
   } catch (error) {
