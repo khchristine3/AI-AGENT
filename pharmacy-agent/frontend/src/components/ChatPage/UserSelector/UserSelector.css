@@ -1,0 +1,64 @@
+/**
+ * UserSelector Component Styles
+ * 
+ * Clean, professional styling for the user selection dropdown.
+ * Matches pharmacy/medical application aesthetics.
+ */
+
+.user-selector-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.user-selector-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+}
+
+.user-selector {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 2px solid #d0d0d0;
+  border-radius: 8px;
+  background-color: white;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  max-width: 400px;
+}
+
+.user-selector:hover:not(:disabled) {
+  border-color: #0084ff;
+}
+
+.user-selector:focus {
+  outline: none;
+  border-color: #0084ff;
+  box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.1);
+}
+
+.user-selector:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f5f5f5;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .user-selector-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .user-selector {
+    max-width: none;
+  }
+}
