@@ -2,24 +2,26 @@
  * Get User Prescriptions Tool
  *
  * This tool retrieves prescription information for an authenticated user
- * from the pharmacy database using their user ID (1-10).
+ * from the pharmacy database. It provides prescription details including
+ * medications, expiration dates, refill status, and user allergies.
+ *
+ * Scope:
+ * - Returns ONLY prescription data (medications, dates, refills, allergies)
+ * - Does NOT return stock availability (use check_stock for that)
+ * - Does NOT return medication details (use get_medication_info for that)
+ * - Does NOT return price information (use check_price for that)
  *
  * Authentication:
  * - User is already authenticated via the UI
  * - User ID (1-10) is provided by the system automatically
  * - No additional verification needed
  *
- * Prescription Processing:
- * - Calculates expiration status
- * - Checks refill availability
- * - It does NOT provide:
- *    - Active ingredients (call get_medication_info for this)
- *    - Stock availability (call check_stock for this)
- *    - Medication warnings (call get_medication_info for this)
- * - Provides summary statistics
+ * Use Cases:
+ * - Customer asks "What are my prescriptions?"
+ * - Customer wants to refill a prescription
+ * - Customer needs to check prescription expiration dates
+ * - Pharmacist needs to verify user allergies before dispensing
  *
- * This ensures the agent performs proper multi-step reasoning and safety checks.
-
  * @module agent/tools/getUserPrescriptions
  */
 
@@ -29,8 +31,8 @@ const db = require('../../database/db');
  * Get User Prescriptions Function
  *
  * Retrieves all prescriptions for the authenticated user with detailed status
- * information including expiration dates and refill counts.
- * Does NOT include stock information - agent should call check_stock for that.
+ * information including expiration dates and refill counts. Calculates expiration
+ * status and refill availability.
  *
  * @param {Object} params - Function parameters
  * @param {number} params.user_id - User's database ID (1-10)
@@ -51,7 +53,7 @@ const db = require('../../database/db');
  * @example
  * // User not found
  * const result = await getUserPrescriptions({ user_id: 999 });
- * // Returns: { success: false, error: 'USER_NOT_FOUND', message: 'User not found.' }
+ * // Returns: { success: false, error: 'USER_NOT_FOUND', message: 'User not found. Please contact support.' }
  */
 async function getUserPrescriptions({ user_id }) {
   try {

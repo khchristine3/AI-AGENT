@@ -87,10 +87,10 @@ async function handleChatStreaming(userMessage, userId, conversationHistory = []
         const toolName = toolCall.function.name;
         let toolArgs = JSON.parse(toolCall.function.arguments);
 
-        // Auto-inject user_id for user-specific tools
-        if (toolName === 'get_user_prescriptions') {
-          toolArgs.user_id = userId;
-          console.log(`→ Injecting user_id=${userId} into ${toolName}`);
+        // Any tool starting with "get_user_" needs user_id
+        if (toolName.startsWith('getUser')) {
+          toolCall.function.arguments.user_id = userId;
+          console.log(`→ Auto-injecting user_id=${userId} into ${toolName}`);
         }
 
         console.log(`→ Calling: ${toolName}`, toolArgs);

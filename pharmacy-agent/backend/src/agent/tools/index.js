@@ -16,6 +16,7 @@
 
 const getMedicationInfo = require('./getMedicationInfo');
 const checkStock = require('./checkStock');
+const checkPrice = require('./checkPrice');
 const getUserPrescriptions = require('./getUserPrescriptions');
 
 /**
@@ -27,13 +28,20 @@ const getUserPrescriptions = require('./getUserPrescriptions');
  * Available Tools:
  * - get_medication_info: Retrieves detailed information about a medication
  * - check_stock: Checks inventory levels for a medication
+* - check_price: Retrieves current pricing for a medication
  * - get_user_prescriptions: Fetches prescription history for a user
  *
+ *  Tool Separation Philosophy:
+ * - Each tool has a SINGLE, clear responsibility
+ * - No overlapping data between tools
+ * - Agent can call tools independently or combine them
+ * 
  * @type {Object.<string, Function>}
  */
 const toolRegistry = {
   get_medication_info: getMedicationInfo,
   check_stock: checkStock,
+  check_price: checkPrice, 
   get_user_prescriptions: getUserPrescriptions
 };
 

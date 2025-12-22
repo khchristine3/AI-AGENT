@@ -12,11 +12,12 @@
  * - Usage examples and guidelines
  *
  * Available Tools:
- * - get_medication_info: Retrieve detailed medication information
- * - check_stock: Check medication availability and pricing
- * - get_user_prescriptions: Retrieve prescriptions for authenticated user
+ * - get_medication_info: Retrieve medication information only
+ * - check_stock: Check medication availability only
+ * - check_price: Pricing information only
+ * - get_user_prescriptions: Retrieve prescriptions only for authenticated user
  *
- * These definitions follow the OpenAI Function Calling specification.
+ * NO DATA OVERLAP between tools - each has a single, clear purpose.
  *
  * @module agent/tools/definitions
  */
@@ -26,34 +27,22 @@ const TOOL_DEFINITIONS = [
     type: "function",
     function: {
       name: "get_medication_info",
-      description: `Retrieves detailed information about a medication from the pharmacy database.
+      description: `Retrieves educational information about a medication.
 
-PROVIDES:
-- Active ingredient (pharmaceutical composition)
-- Dosage form and strength
-- Usage instructions (as written on packaging)
-- Warnings and contraindications
-- General description and purpose
-- Whether prescription is required
-
-DOES NOT PROVIDE:
-- User-specific prescription information (use get_user_prescriptions)
-- Real-time stock availability (use check_stock)
-- Current pricing (use check_stock)
-
-IMPORTANT: Use this tool to verify active ingredients and warnings when checking allergy compatibility.
-
-Use this when the customer asks:
+Use this tool when the customer asks:
 - "What is [medication]?"
-- "What's in [medication]?"
-- "How do I use [medication]?"
-- When you need to verify ingredients for allergy checking`,
+- "What's in [medication]?" (active ingredients)
+- "How do I use [medication]?" (usage instructions)
+- When you need to verify ingredients for allergy checking
+
+Returns: Active ingredient, dosage form, strength, usage instructions, warnings, description.
+Does NOT return: Stock availability (use check_stock), pricing (use check_price).`,
       parameters: {
         type: "object",
         properties: {
           medication_name: {
             type: "string",
-            description: "The name of the medication to look up (in English). Examples: 'Acamol', 'Ibuprofen', 'Amoxicillin'"
+            description: "Medication name in English. Examples: 'Acamol', 'Ibuprofen', 'Amoxicillin'"
           }
         },
         required: ["medication_name"]
@@ -64,31 +53,46 @@ Use this when the customer asks:
     type: "function",
     function: {
       name: "check_stock",
-      description: `Checks the current stock availability and price of a medication.
+      description: `Checks stock availability for a medication.
 
-PROVIDES:
-- Real-time stock availability (in stock / out of stock)
-- Quantity currently available
-- Current price
-- Whether prescription is required
-
-DOES NOT PROVIDE:
-- Active ingredients (use get_medication_info)
-- Usage instructions (use get_medication_info)
-- Medication warnings (use get_medication_info)
-- User prescriptions (use get_user_prescriptions)
-
-Use this when the customer asks:
+Use this tool when the customer asks:
 - "Do you have [medication]?"
 - "Is [medication] in stock?"
-- "How much is [medication]?"
-- When you need to verify availability for a refill`,
+- "How many [medication] do you have?"
+
+Returns: Stock status (in stock / out of stock), quantity available, prescription requirement.
+Does NOT return: Price (use check_price), medication details (use get_medication_info).`,
       parameters: {
         type: "object",
         properties: {
           medication_name: {
             type: "string",
-            description: "The name of the medication to check (in English). Examples: 'Acamol', 'Ibuprofen', 'Omeprazole'"
+            description: "Medication name in English. Examples: 'Acamol', 'Ibuprofen', 'Omeprazole'"
+          }
+        },
+        required: ["medication_name"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "check_price",
+      description: `Checks the current price of a medication.
+
+Use this tool when the customer asks:
+- "How much is [medication]?"
+- "What's the price of [medication]?"
+- "How much does [medication] cost?"
+
+Returns: Current price, prescription requirement.
+Does NOT return: Stock availability (use check_stock), medication details (use get_medication_info).`,
+      parameters: {
+        type: "object",
+        properties: {
+          medication_name: {
+            type: "string",
+            description: "Medication name in English. Examples: 'Acamol', 'Ibuprofen', 'Amoxicillin'"
           }
         },
         required: ["medication_name"]
@@ -99,36 +103,25 @@ Use this when the customer asks:
     type: "function",
     function: {
       name: "get_user_prescriptions",
-      description: `Retrieves prescription information for the currently authenticated user.
+      description: `Retrieves prescription information for the authenticated user.
 
-PROVIDES:
-- Prescription metadata (dates, refills remaining, prescriber)
-- User allergy information
-- Prescription status (expired/active, has refills)
+IMPORTANT: The user is already authenticated. The user_id is provided automatically.
 
-DOES NOT PROVIDE:
-- Active ingredients (use get_medication_info)
-- Medication warnings (use get_medication_info)
-- Current stock availability (use check_stock)
-- Current pricing (use check_stock)
-
-IMPORTANT: The user is already authenticated. The user_id is provided automatically 
-by the system - DO NOT ask the user for identification.
-
-Use this when the customer:
+Use this tool when the customer:
 - Wants to refill a prescription
 - Asks about their current prescriptions
 - Says "my prescriptions" or "my medications"
-- Needs to check prescription validity or refills
 
-This tool provides allergy information. When allergies are present and user is asking 
-about a medication, you should also call get_medication_info to verify ingredients and warnings.`,
+Returns: Prescription metadata (dates, refills, prescriber), user allergies, prescription status.
+Does NOT return: Active ingredients, medication warnings, stock, pricing.
+
+Note: When allergies are present, also call get_medication_info to verify ingredients and warnings.`,
       parameters: {
         type: "object",
         properties: {
           user_id: {
             type: "integer",
-            description: "The authenticated user's database ID (1-10). Provided automatically by the system."
+            description: "User's database ID (1-10). Provided automatically by the system."
           }
         },
         required: ["user_id"]
