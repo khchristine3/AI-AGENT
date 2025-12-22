@@ -12,9 +12,14 @@
  * Prescription Processing:
  * - Calculates expiration status
  * - Checks refill availability
- * - Verifies medication stock status
+ * - It does NOT provide:
+ *    - Active ingredients (call get_medication_info for this)
+ *    - Stock availability (call check_stock for this)
+ *    - Medication warnings (call get_medication_info for this)
  * - Provides summary statistics
  *
+ * This ensures the agent performs proper multi-step reasoning and safety checks.
+
  * @module agent/tools/getUserPrescriptions
  */
 
@@ -24,7 +29,8 @@ const db = require('../../database/db');
  * Get User Prescriptions Function
  *
  * Retrieves all prescriptions for the authenticated user with detailed status
- * information including expiration dates, refill counts, and stock availability.
+ * information including expiration dates and refill counts.
+ * Does NOT include stock information - agent should call check_stock for that.
  *
  * @param {Object} params - Function parameters
  * @param {number} params.user_id - User's database ID (1-10)
@@ -38,7 +44,7 @@ const db = require('../../database/db');
  * //   data: {
  * //     user: { name: 'David Cohen', allergies: ['Penicillin'] },
  * //     prescriptions: [...],
- * //     summary: { total_prescriptions: 1, active_prescriptions: 0, refillable_now: 0 }
+ * //     summary: { total_prescriptions: 1, active_prescriptions: 1, refillable_now: 1 }
  * //   }
  * // }
  *
@@ -82,15 +88,13 @@ async function getUserPrescriptions({ user_id }) {
       };
     }
 
-    // Get prescriptions for this user
+    // Get prescriptions (MINIMAL INFO - agent should call other tools for details)
     const prescriptions = db.prepare(`
       SELECT 
         p.id as prescription_id,
         m.name as medication_name,
-        m.active_ingredient,
         m.dosage_form,
         m.strength,
-        m.stock_quantity,
         p.prescribed_date,
         p.valid_until,
         p.refills_remaining,
@@ -102,18 +106,16 @@ async function getUserPrescriptions({ user_id }) {
       ORDER BY p.valid_until DESC
     `).all(user.id);
 
-    // Process prescriptions to calculate status
+    // Process prescriptions to calculate status (WITHOUT stock/ingredient info)
     const today = new Date().toISOString().split('T')[0];
     
     const processedPrescriptions = prescriptions.map(rx => {
       const isExpired = rx.valid_until < today;
       const hasRefills = rx.refills_remaining > 0;
-      const inStock = rx.stock_quantity > 0;
 
       return {
         prescription_id: rx.prescription_id,
         medication_name: rx.medication_name,
-        active_ingredient: rx.active_ingredient,
         dosage_form: rx.dosage_form,
         strength: rx.strength,
         prescribed_date: rx.prescribed_date,
@@ -124,8 +126,7 @@ async function getUserPrescriptions({ user_id }) {
         status: {
           is_expired: isExpired,
           has_refills: hasRefills,
-          in_stock: inStock,
-          can_refill: !isExpired && hasRefills && inStock
+          can_refill: !isExpired && hasRefills
         }
       };
     });

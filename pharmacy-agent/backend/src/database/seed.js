@@ -85,7 +85,7 @@ const prescriptions = [
   { user_id: 4, medication_id: 4, prescribed_date: '2025-12-01', valid_until: '2026-06-01', refills_remaining: 3, prescribing_doctor: 'Dr. Miriam Levy', notes: 'For GERD.' },
   { user_id: 6, medication_id: 3, prescribed_date: '2025-12-01', valid_until: '2026-03-01', refills_remaining: 0, prescribing_doctor: 'Dr. Yosef Katz', notes: null },
   { user_id: 9, medication_id: 4, prescribed_date: '2025-12-01', valid_until: '2026-06-01', refills_remaining: 5, prescribing_doctor: 'Dr. Dana Cohen', notes: 'Long-term treatment.' },
-  { user_id: 1, medication_id: 3, prescribed_date: '2024-06-01', valid_until: '2024-12-01', refills_remaining: 0, prescribing_doctor: 'Dr. Old Record', notes: 'Expired prescription.' }
+  { user_id: 1, medication_id: 3, prescribed_date: '2025-06-01', valid_until: '2026-12-01', refills_remaining: 2, prescribing_doctor: 'Dr. Sharon Aviv', notes: 'For bacterial infection.' }  // ← FIXED!
 ];
 
 // ============================================================================

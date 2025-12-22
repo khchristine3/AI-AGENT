@@ -27,16 +27,27 @@ const TOOL_DEFINITIONS = [
     function: {
       name: "get_medication_info",
       description: `Retrieves detailed information about a medication from the pharmacy database.
-      
-Use this tool when the customer asks about:
-- What a medication is or what it's used for
-- Active ingredients in a medication
-- Dosage form and strength
-- Usage instructions
-- Whether a prescription is required
-- Warnings and precautions
 
-Returns comprehensive medication details including description, usage instructions, and stock status.`,
+PROVIDES:
+- Active ingredient (pharmaceutical composition)
+- Dosage form and strength
+- Usage instructions (as written on packaging)
+- Warnings and contraindications
+- General description and purpose
+- Whether prescription is required
+
+DOES NOT PROVIDE:
+- User-specific prescription information (use get_user_prescriptions)
+- Real-time stock availability (use check_stock)
+- Current pricing (use check_stock)
+
+IMPORTANT: Use this tool to verify active ingredients and warnings when checking allergy compatibility.
+
+Use this when the customer asks:
+- "What is [medication]?"
+- "What's in [medication]?"
+- "How do I use [medication]?"
+- When you need to verify ingredients for allergy checking`,
       parameters: {
         type: "object",
         properties: {
@@ -55,13 +66,23 @@ Returns comprehensive medication details including description, usage instructio
       name: "check_stock",
       description: `Checks the current stock availability and price of a medication.
 
-Use this tool when the customer asks about:
-- Whether a medication is available
-- If something is in stock
-- How much of a medication is available
-- The price of a medication
+PROVIDES:
+- Real-time stock availability (in stock / out of stock)
+- Quantity currently available
+- Current price
+- Whether prescription is required
 
-Returns availability status, quantity in stock, and current price.`,
+DOES NOT PROVIDE:
+- Active ingredients (use get_medication_info)
+- Usage instructions (use get_medication_info)
+- Medication warnings (use get_medication_info)
+- User prescriptions (use get_user_prescriptions)
+
+Use this when the customer asks:
+- "Do you have [medication]?"
+- "Is [medication] in stock?"
+- "How much is [medication]?"
+- When you need to verify availability for a refill`,
       parameters: {
         type: "object",
         properties: {
@@ -80,23 +101,34 @@ Returns availability status, quantity in stock, and current price.`,
       name: "get_user_prescriptions",
       description: `Retrieves prescription information for the currently authenticated user.
 
-IMPORTANT: The user is already authenticated via the UI. The user_id parameter is provided 
-automatically by the system - DO NOT ask the user for their ID number or any identification.
+PROVIDES:
+- Prescription metadata (dates, refills remaining, prescriber)
+- User allergy information
+- Prescription status (expired/active, has refills)
 
-Use this tool when the customer:
+DOES NOT PROVIDE:
+- Active ingredients (use get_medication_info)
+- Medication warnings (use get_medication_info)
+- Current stock availability (use check_stock)
+- Current pricing (use check_stock)
+
+IMPORTANT: The user is already authenticated. The user_id is provided automatically 
+by the system - DO NOT ask the user for identification.
+
+Use this when the customer:
 - Wants to refill a prescription
 - Asks about their current prescriptions
-- Needs to check prescription validity or remaining refills
-- Asks "my prescriptions" or "do I have any prescriptions?"
+- Says "my prescriptions" or "my medications"
+- Needs to check prescription validity or refills
 
-The tool will automatically use the authenticated user's ID to retrieve their prescriptions,
-allergy information, and medical profile.`,
+This tool provides allergy information. When allergies are present and user is asking 
+about a medication, you should also call get_medication_info to verify ingredients and warnings.`,
       parameters: {
         type: "object",
         properties: {
           user_id: {
             type: "integer",
-            description: "The authenticated user's database ID (1-10). This is provided automatically by the system based on the logged-in user."
+            description: "The authenticated user's database ID (1-10). Provided automatically by the system."
           }
         },
         required: ["user_id"]
