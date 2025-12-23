@@ -82,6 +82,9 @@ export function useChat() {
       content: '',
       timestamp: new Date().toISOString()
     };
+    
+    //Capture updated messages INCLUDING current user message
+    const updatedConversationHistory = [...messages, userMsg];
 
     setMessages(prev => [...prev, userMsg, placeholderMsg]);
 
@@ -97,7 +100,7 @@ export function useChat() {
         body: JSON.stringify({
           message: userMessage,
           userId: selectedUserId,
-          conversationHistory: messages
+          conversationHistory: updatedConversationHistory
         })
       });
 

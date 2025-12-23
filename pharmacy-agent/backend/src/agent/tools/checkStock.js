@@ -1,54 +1,109 @@
 /**
  * Check Stock Tool
  *
- * This tool checks the current stock availability and price of medications
- * in the pharmacy inventory. It implements intelligent search with multiple
- * fallback strategies to help users find medications even with typos or
- * partial names.
+ * ============================================================================
+ * 1. NAME AND PURPOSE
+ * ============================================================================
+ * Name: check_stock
+ * 
+ * Purpose: Checks real-time inventory availability for medications. Returns 
+ * stock status and quantity available. Does NOT return pricing (use check_price) 
+ * or medication details (use get_medication_info) or if prescription required (use get_medication_info).
  *
- * Search Strategy:
- * 1. Exact name match (case-insensitive)
- * 2. Partial name match (LIKE search)
- * 3. Active ingredient match
- * 4. List all medications if nothing found
+ * ============================================================================
+ * 2. INPUTS (Parameters and Types)
+ * ============================================================================
+ * medication_name
+ *   - Type: string
+ *   - Required: Yes
+ *   - Description: Name of the medication to check stock for
+ *   - Examples: "Acamol", "Ibuprofen", "Omeprazole"
  *
- * Returns:
- * - For exact match: Stock quantity, price, and prescription requirement
- * - For partial matches: Suggestions with stock status
- * - For no matches: Complete medication inventory
+ * ============================================================================
+ * 3. OUTPUT SCHEMA (Fields and Types)
+ * ============================================================================
+ * 
+ * SUCCESS RESPONSE:
+ * {
+ *   success: boolean              // Always true for successful queries
+ *   data: {
+ *     medication_name: string     // Medication name as found in database
+ *     in_stock: boolean           // true if quantity > 0, false otherwise
+ *     quantity_available: number  // Number of units in stock (integer)
+ *     status_message: string      // Human-readable status message
+ *   }
+ * }
+ *
+ * ERROR RESPONSE:
+ * {
+ *   success: boolean              // Always false for errors
+ *   error: string                 // Error code (see Error Handling section)
+ *   message: string               // Human-readable error message
+ *   suggestions: Array<Object>    // Optional: Similar medications if found
+ *   hint: string                  // Optional: Helpful hint for user
+ * }
+ *
+ * ============================================================================
+ * 4. ERROR HANDLING
+ * ============================================================================
+ * MEDICATION_NOT_FOUND
+ *   - Trigger: Medication doesn't exist in database (after all fallback attempts)
+ *   - Behavior: Returns suggestions based on partial matches or active ingredients
+ *
+ * INVALID_INPUT
+ *   - Trigger: medication_name is missing, empty, or not a string
+ *   - Behavior: Returns validation error, no database query attempted
+ *
+ * DATABASE_ERROR
+ *   - Trigger: Database connection failure or SQL query exception
+ *   - Behavior: Logs technical error, returns generic user-friendly message
+ *
+ * ============================================================================
+ * 5. FALLBACK BEHAVIOR
+ * ============================================================================
+ * 4-step search strategy when exact match fails:
+ *
+ * Step 1: Exact name match (case-insensitive)
+ *   - SQL: WHERE LOWER(name) = LOWER(?)
+ *   - Example: "Ibuprofen" → finds "Ibuprofen"
+ *
+ * Step 2: Partial name match (LIKE search)
+ *   - SQL: WHERE LOWER(name) LIKE '%' || LOWER(?) || '%'
+ *   - Example: "Ibu" → finds "Ibuprofen"
+ *
+ * Step 3: Active ingredient match
+ *   - SQL: WHERE LOWER(active_ingredient) LIKE '%' || LOWER(?) || '%'
+ *   - Example: "Paracetamol" → finds "Acamol" (contains Paracetamol)
+ *
+ * Step 4: Not found
+ *   - Returns MEDICATION_NOT_FOUND with empty suggestions
+ *   - Message: "Please check the spelling or ask a pharmacist"
+ *
+ * Note: All medication-searching tools use this identical fallback strategy.
+ *
+ * ============================================================================
  *
  * @module agent/tools/checkStock
  */
 
 const db = require('../../database/db');
 
-/**
- * Check Stock Function
- *
- * Queries the database to check if a medication is in stock and returns
- * availability information along with price and prescription requirements.
- *
- * @param {Object} params - Function parameters
- * @param {string} params.medication_name - Name of the medication to check
- * @returns {Promise<Object>} Result object with stock information or suggestions
- *
- * @example
- * // Exact match found
- * const result = await checkStock({ medication_name: 'Acamol' });
- * // Returns: { success: true, data: { medication_name: 'Acamol', in_stock: true, ... } }
- *
- * @example
- * // Medication not found, returns suggestions
- * const result = await checkStock({ medication_name: 'Acamo' });
- * // Returns: { success: false, error: 'MEDICATION_NOT_FOUND', suggestions: [...] }
- */
 async function checkStock({ medication_name }) {
   try {
+    // Validate input
+    if (!medication_name || typeof medication_name !== 'string') {
+      return {
+        success: false,
+        error: 'INVALID_INPUT',
+        message: 'Medication name is required.'
+      };
+    }
+
     const searchTerm = medication_name.trim().toLowerCase();
     
-    // 1. Try exact match
+    // FALLBACK STRATEGY 1: Exact name match (case-insensitive)
     let medication = db.prepare(`
-      SELECT name, stock_quantity, price, requires_prescription 
+      SELECT name, stock_quantity 
       FROM medications 
       WHERE LOWER(name) = ?
     `).get(searchTerm);
@@ -62,8 +117,6 @@ async function checkStock({ medication_name }) {
           medication_name: medication.name,
           in_stock: inStock,
           quantity_available: medication.stock_quantity,
-          price: medication.price,
-          requires_prescription: medication.requires_prescription === 1,
           status_message: inStock 
             ? `${medication.name} is in stock (${medication.stock_quantity} units available).`
             : `${medication.name} is currently out of stock.`
@@ -71,10 +124,12 @@ async function checkStock({ medication_name }) {
       };
     }
 
-    // 2. Fallback: Try partial name match
+    // FALLBACK STRATEGY 2: Partial name match (LIKE search)
     const similarByName = db.prepare(`
-      SELECT name, stock_quantity FROM medications 
+      SELECT name, stock_quantity 
+      FROM medications 
       WHERE LOWER(name) LIKE ?
+      LIMIT 5
     `).all(`%${searchTerm}%`);
 
     if (similarByName.length > 0) {
@@ -90,17 +145,19 @@ async function checkStock({ medication_name }) {
       };
     }
 
-    // 3. Fallback: Try search by active ingredient
+    // FALLBACK STRATEGY 3: Active ingredient match
     const similarByIngredient = db.prepare(`
-      SELECT name, active_ingredient, stock_quantity FROM medications 
+      SELECT name, active_ingredient, stock_quantity 
+      FROM medications 
       WHERE LOWER(active_ingredient) LIKE ?
+      LIMIT 5
     `).all(`%${searchTerm}%`);
 
     if (similarByIngredient.length > 0) {
       return {
         success: false,
         error: 'MEDICATION_NOT_FOUND',
-        message: `Medication "${medication_name}" not found, but we have medications with similar ingredients.`,
+        message: `Medication "${medication_name}" not found, but we have medications with similar active ingredients.`,
         suggestions: similarByIngredient.map(m => ({
           name: m.name,
           active_ingredient: m.active_ingredient,
@@ -110,21 +167,13 @@ async function checkStock({ medication_name }) {
       };
     }
 
-    // 4. Nothing found - list all available medications
-    const allMedications = db.prepare(`
-      SELECT name, stock_quantity FROM medications
-      ORDER BY name
-    `).all();
-
+    // FALLBACK STRATEGY 4: Not found - no suggestions available
     return {
       success: false,
       error: 'MEDICATION_NOT_FOUND',
       message: `Medication "${medication_name}" was not found in our inventory.`,
-      suggestions: allMedications.map(m => ({
-        name: m.name,
-        in_stock: m.stock_quantity > 0
-      })),
-      hint: 'Here are the medications we carry.'
+      suggestions: [],
+      hint: 'Please check the spelling or ask a pharmacist for assistance.'
     };
 
   } catch (error) {

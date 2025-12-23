@@ -69,10 +69,8 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     status: 'running',
     endpoints: {
-      health: 'GET /api/health',
       chat: 'POST /api/chat (streaming)',
       chatSimple: 'POST /api/chat/simple (non-streaming)',
-      users: 'GET /api/users'
     }
   });
 });

@@ -1,14 +1,13 @@
 /**
- * Get Medication Info Tool
+ * Check Price Tool
  *
  * ============================================================================
  * 1. NAME AND PURPOSE
  * ============================================================================
- * Name: get_medication_info
+ * Name: check_price
  * 
- * Purpose: Retrieves educational information about medications including active 
- * ingredients, dosage forms, usage instructions, and warnings. Does NOT return 
- * stock availability (use check_stock) or pricing (use check_price).
+ * Purpose: Retrieves current pricing for medications. Does NOT return stock availability (use check_stock) 
+ * or medication details (use get_medication_info) or if prescription required (use get_medication_info).
  *
  * ============================================================================
  * 2. INPUTS (Parameters and Types)
@@ -16,8 +15,8 @@
  * medication_name
  *   - Type: string
  *   - Required: Yes
- *   - Description: Name of the medication to look up
- *   - Examples: "Acamol", "Ibuprofen", "Amoxicillin"
+ *   - Description: Name of the medication to check price for
+ *   - Examples: "Acamol", "Ibuprofen", "Omeprazole"
  *
  * ============================================================================
  * 3. OUTPUT SCHEMA (Fields and Types)
@@ -27,14 +26,8 @@
  * {
  *   success: boolean                   // Always true for successful queries
  *   data: {
- *     name: string                     // Medication name
- *     active_ingredient: string        // Primary active ingredient
- *     dosage_form: string              // Form (Tablet, Capsule, Liquid, etc.)
- *     strength: string                 // Dosage strength (e.g., "400mg", "500mg")
- *     requires_prescription: boolean   // true if prescription required
- *     description: string              // Medical description and use case
- *     usage_instructions: string       // How to take the medication
- *     warnings: Array<string>          // List of safety warnings and precautions
+ *     medication_name: string          // Medication name as found in database
+ *     price: number                    // Current price (float, e.g., 12.90, 18.50)
  *   }
  * }
  *
@@ -58,7 +51,7 @@
  *   - Trigger: medication_name is missing, empty, or not a string
  *   - Behavior: Returns validation error, no database query attempted
  *
- * DATABASE_ERROR
+ * SYSTEM_ERROR
  *   - Trigger: Database connection failure or SQL query exception
  *   - Behavior: Logs technical error, returns generic user-friendly message
  *
@@ -87,12 +80,12 @@
  *
  * ============================================================================
  *
- * @module agent/tools/getMedicationInfo
+ * @module agent/tools/checkPrice
  */
 
 const db = require('../../database/db');
 
-async function getMedicationInfo({ medication_name }) {
+async function checkPrice({ medication_name }) {
   try {
     // Validate input
     if (!medication_name || typeof medication_name !== 'string') {
@@ -107,7 +100,8 @@ async function getMedicationInfo({ medication_name }) {
 
     // FALLBACK STRATEGY 1: Exact name match (case-insensitive)
     let medication = db.prepare(`
-      SELECT * FROM medications
+      SELECT name, price
+      FROM medications 
       WHERE LOWER(name) = ?
     `).get(searchTerm);
 
@@ -115,21 +109,16 @@ async function getMedicationInfo({ medication_name }) {
       return {
         success: true,
         data: {
-          name: medication.name,
-          active_ingredient: medication.active_ingredient,
-          dosage_form: medication.dosage_form,
-          strength: medication.strength,
-          requires_prescription: medication.requires_prescription === 1,
-          description: medication.description,
-          usage_instructions: medication.usage_instructions,
-          warnings: JSON.parse(medication.warnings || '[]')
+          medication_name: medication.name,
+          price: medication.price
         }
       };
     }
 
     // FALLBACK STRATEGY 2: Partial name match (LIKE search)
     const similarByName = db.prepare(`
-      SELECT name FROM medications
+      SELECT name, price 
+      FROM medications 
       WHERE LOWER(name) LIKE ?
       LIMIT 5
     `).all(`%${searchTerm}%`);
@@ -146,7 +135,8 @@ async function getMedicationInfo({ medication_name }) {
 
     // FALLBACK STRATEGY 3: Active ingredient match
     const similarByIngredient = db.prepare(`
-      SELECT name, active_ingredient FROM medications
+      SELECT name, active_ingredient 
+      FROM medications 
       WHERE LOWER(active_ingredient) LIKE ?
       LIMIT 5
     `).all(`%${searchTerm}%`);
@@ -168,19 +158,19 @@ async function getMedicationInfo({ medication_name }) {
     return {
       success: false,
       error: 'MEDICATION_NOT_FOUND',
-      message: `Medication "${medication_name}" was not found in our database.`,
+      message: `Medication "${medication_name}" was not found in our inventory.`,
       suggestions: [],
       hint: 'Please check the spelling or ask a pharmacist for assistance.'
     };
 
   } catch (error) {
-    console.error('Error in getMedicationInfo:', error);
+    console.error('Error in checkPrice:', error);
     return {
       success: false,
-      error: 'DATABASE_ERROR',
-      message: 'An error occurred while looking up the medication. Please try again.'
+      error: 'SYSTEM_ERROR',
+      message: 'An error occurred while checking the price. Please try again.'
     };
   }
 }
 
-module.exports = getMedicationInfo;
+module.exports = checkPrice;
