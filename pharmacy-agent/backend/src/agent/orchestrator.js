@@ -19,7 +19,7 @@ const OpenAI = require('openai');
 const config = require('../config');
 const SYSTEM_PROMPT = require('./systemPrompt');
 const TOOL_DEFINITIONS = require('./tools/definitions');
-const { executeTool } = require('./tools');
+const { executeTool } = require('./tools/registry');
 
 // Initialize OpenAI client with API key from config
 const openai = new OpenAI({
@@ -115,7 +115,7 @@ async function handleChatStreaming(userMessage, userId, conversationHistory = []
     // HANDLE FINAL RESPONSE WITH STREAMING
     // ============================================
     if (choice.finish_reason === 'stop') {
-      console.log('\n🔄 Starting streaming response...');
+      console.log('\nStarting streaming response...');
 
       // Create a new streaming completion
       const stream = await openai.chat.completions.create({
@@ -127,7 +127,7 @@ async function handleChatStreaming(userMessage, userId, conversationHistory = []
       let fullContent = '';
       let chunkCount = 0;
 
-      console.log('📡 Stream created, processing chunks...');
+      console.log('Stream created, processing chunks...');
 
       try {
         // Process each chunk as it arrives
@@ -139,7 +139,7 @@ async function handleChatStreaming(userMessage, userId, conversationHistory = []
             fullContent += content;
             
             // Log first 20 chars of each chunk
-            console.log(`📨 Chunk ${chunkCount}: "${content.substring(0, 20)}${content.length > 20 ? '...' : ''}"`);
+            console.log(`Chunk ${chunkCount}: "${content.substring(0, 20)}${content.length > 20 ? '...' : ''}"`);
             
             // Send chunk to callback for real-time display
             if (onChunk) {
@@ -148,13 +148,13 @@ async function handleChatStreaming(userMessage, userId, conversationHistory = []
           }
         }
       } catch (streamError) {
-        console.error('❌ Stream error:', streamError);
+        console.error('Stream error:', streamError);
         throw streamError;
       }
 
-      console.log(`\n✅ Streaming complete!`);
-      console.log(`📊 Total chunks sent: ${chunkCount}`);
-      console.log(`📝 Full content length: ${fullContent.length} characters`);
+      console.log(`\nStreaming complete!`);
+      console.log(`Total chunks sent: ${chunkCount}`);
+      console.log(`Full content length: ${fullContent.length} characters`);
 
       // Build updated conversation history with full response
       const updatedHistory = [
@@ -174,12 +174,12 @@ async function handleChatStreaming(userMessage, userId, conversationHistory = []
     // ============================================
     // HANDLE UNEXPECTED FINISH REASONS
     // ============================================
-    console.warn(`⚠️ Unexpected finish_reason: ${choice.finish_reason}`);
+    console.warn(`Unexpected finish_reason: ${choice.finish_reason}`);
     break;
   }
 
   // Max steps reached - safety mechanism activated
-  console.error(`❌ Max steps (${maxSteps}) reached`);
+  console.error(`Max steps (${maxSteps}) reached`);
   return {
     success: false,
     error: 'MAX_STEPS_REACHED',
@@ -210,7 +210,6 @@ async function handleChat(userMessage, userId, conversationHistory = [], onChunk
   // Build the message array with system prompt, history, and new user message
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'system', content: `CONTEXT: The current user is authenticated with database ID: ${userId}. When calling get_user_prescriptions, the user_id parameter will be provided automatically - do NOT ask the user for identification.` },
     ...conversationHistory,
     { role: 'user', content: userMessage }
   ];

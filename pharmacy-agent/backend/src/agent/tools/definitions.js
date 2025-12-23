@@ -34,8 +34,9 @@ Use this tool when the customer asks:
 - "What's in [medication]?" (active ingredients)
 - "How do I use [medication]?" (usage instructions)
 - When you need to verify ingredients for allergy checking
+- when you need to check if a prescription is required for a medication
 
-Returns: Active ingredient, dosage form, strength, usage instructions, warnings, description.
+Returns: Active ingredient, dosage form, strength, usage instructions, prescription requirement, warnings, description.
 Does NOT return: Stock availability (use check_stock), pricing (use check_price).`,
       parameters: {
         type: "object",
@@ -60,8 +61,7 @@ Use this tool when the customer asks:
 - "Is [medication] in stock?"
 - "How many [medication] do you have?"
 
-Returns: Stock status (in stock / out of stock), quantity available, prescription requirement.
-Does NOT return: Price (use check_price), medication details (use get_medication_info).`,
+Returns: Stock status (in stock / out of stock), quantity available.`,
       parameters: {
         type: "object",
         properties: {
@@ -85,8 +85,7 @@ Use this tool when the customer asks:
 - "What's the price of [medication]?"
 - "How much does [medication] cost?"
 
-Returns: Current price, prescription requirement.
-Does NOT return: Stock availability (use check_stock), medication details (use get_medication_info).`,
+Returns: Current price.`,
       parameters: {
         type: "object",
         properties: {

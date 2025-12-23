@@ -1,60 +1,106 @@
 /**
  * Get User Prescriptions Tool
  *
- * This tool retrieves prescription information for an authenticated user
- * from the pharmacy database. It provides prescription details including
- * medications, expiration dates, refill status, and user allergies.
+ * ============================================================================
+ * 1. NAME AND PURPOSE
+ * ============================================================================
+ * Name: get_user_prescriptions
+ * 
+ * Purpose: Retrieves prescription history and allergy information for authenticated 
+ * users. Returns prescription metadata, refill status, and user allergies. Does NOT 
+ * return stock availability (use check_stock), medication details (use get_medication_info), 
+ * or pricing (use check_price).
  *
- * Scope:
- * - Returns ONLY prescription data (medications, dates, refills, allergies)
- * - Does NOT return stock availability (use check_stock for that)
- * - Does NOT return medication details (use get_medication_info for that)
- * - Does NOT return price information (use check_price for that)
+ * Note: user_id is automatically injected by the orchestrator for any tool whose
+ * name starts with 'get_user_'. The agent doesn't need to ask for identification.
  *
- * Authentication:
- * - User is already authenticated via the UI
- * - User ID (1-10) is provided by the system automatically
- * - No additional verification needed
+ * ============================================================================
+ * 2. INPUTS (Parameters and Types)
+ * ============================================================================
+ * user_id
+ *   - Type: number (integer)
+ *   - Required: Yes (auto-injected by system)
+ *   - Description: User's database ID
+ *   - Valid range: 1-10 (demo database)
+ *   - Examples: 1, 2, 3
  *
- * Use Cases:
- * - Customer asks "What are my prescriptions?"
- * - Customer wants to refill a prescription
- * - Customer needs to check prescription expiration dates
- * - Pharmacist needs to verify user allergies before dispensing
+ * ============================================================================
+ * 3. OUTPUT SCHEMA (Fields and Types)
+ * ============================================================================
+ * 
+ * SUCCESS RESPONSE:
+ * {
+ *   success: boolean                   // Always true for successful queries
+ *   data: {
+ *     user: {
+ *       name: string                   // User's full name
+ *       id_number: string              // National ID number
+ *       allergies: Array<string>       // List of known allergies
+ *     }
+ *     prescriptions: Array<{
+ *       prescription_id: number        // Unique prescription ID
+ *       medication_name: string        // Name of prescribed medication
+ *       dosage_form: string            // Form (Tablet, Capsule, etc.)
+ *       strength: string               // Dosage strength (e.g., "500mg")
+ *       prescribed_date: string        // ISO date (YYYY-MM-DD)
+ *       valid_until: string            // ISO date (YYYY-MM-DD)
+ *       refills_remaining: number      // Number of refills left
+ *       prescribing_doctor: string     // Doctor's name
+ *       notes: string                  // Prescription notes
+ *       status: {
+ *         is_expired: boolean          // true if past valid_until date
+ *         has_refills: boolean         // true if refills_remaining > 0
+ *         can_refill: boolean          // true if not expired AND has refills
+ *       }
+ *     }>
+ *     summary: {
+ *       total_prescriptions: number    // Total count of all prescriptions
+ *       active_prescriptions: number   // Count of non-expired prescriptions
+ *       refillable_now: number         // Count of prescriptions that can be refilled
+ *     }
+ *   }
+ * }
+ *
+ * ERROR RESPONSE:
+ * {
+ *   success: boolean                   // Always false for errors
+ *   error: string                      // Error code (see Error Handling section)
+ *   message: string                    // Human-readable error message
+ * }
+ *
+ * ============================================================================
+ * 4. ERROR HANDLING
+ * ============================================================================
+ * USER_NOT_FOUND
+ *   - Trigger: Invalid user_id (not in database)
+ *   - Behavior: Returns error message, suggests contacting support
+ *
+ * INVALID_USER_ID
+ *   - Trigger: Missing user_id, not a number, or out of valid range (1-10)
+ *   - Behavior: Returns validation error, no database query attempted
+ *
+ * SYSTEM_ERROR
+ *   - Trigger: Database connection failure or SQL query exception
+ *   - Behavior: Logs technical error, returns generic user-friendly message
+ *
+ * ============================================================================
+ * 5. FALLBACK BEHAVIOR
+ * ============================================================================
+ * No fallback search strategy - requires exact user_id match.
+ *
+ * Graceful degradation:
+ *   - If user exists but has no prescriptions → Returns empty prescriptions array
+ *     with summary showing zeros
+ *   - If user has no allergies → Returns empty allergies array
+ *   - Always returns user info even if prescriptions table is empty
+ *
+ * ============================================================================
  *
  * @module agent/tools/getUserPrescriptions
  */
 
 const db = require('../../database/db');
 
-/**
- * Get User Prescriptions Function
- *
- * Retrieves all prescriptions for the authenticated user with detailed status
- * information including expiration dates and refill counts. Calculates expiration
- * status and refill availability.
- *
- * @param {Object} params - Function parameters
- * @param {number} params.user_id - User's database ID (1-10)
- * @returns {Promise<Object>} Result object with user info, prescriptions, and summary
- *
- * @example
- * // Successful retrieval
- * const result = await getUserPrescriptions({ user_id: 1 });
- * // Returns: {
- * //   success: true,
- * //   data: {
- * //     user: { name: 'David Cohen', allergies: ['Penicillin'] },
- * //     prescriptions: [...],
- * //     summary: { total_prescriptions: 1, active_prescriptions: 1, refillable_now: 1 }
- * //   }
- * // }
- *
- * @example
- * // User not found
- * const result = await getUserPrescriptions({ user_id: 999 });
- * // Returns: { success: false, error: 'USER_NOT_FOUND', message: 'User not found. Please contact support.' }
- */
 async function getUserPrescriptions({ user_id }) {
   try {
     // Validate user_id parameter

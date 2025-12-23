@@ -1,49 +1,90 @@
 /**
  * Check Price Tool
  *
- * This tool retrieves the current price for a specific medication from the 
- * pharmacy database. It provides pricing information and prescription requirements.
+ * ============================================================================
+ * 1. NAME AND PURPOSE
+ * ============================================================================
+ * Name: check_price
+ * 
+ * Purpose: Retrieves current pricing for medications. Does NOT return stock availability (use check_stock) 
+ * or medication details (use get_medication_info) or if prescription required (use get_medication_info).
  *
- * Scope:
- * - Returns ONLY pricing information (price + prescription requirement)
- * - Does NOT return stock availability (use check_stock for that)
- * - Does NOT return medication details (use get_medication_info for that)
+ * ============================================================================
+ * 2. INPUTS (Parameters and Types)
+ * ============================================================================
+ * medication_name
+ *   - Type: string
+ *   - Required: Yes
+ *   - Description: Name of the medication to check price for
+ *   - Examples: "Acamol", "Ibuprofen", "Omeprazole"
  *
- * Search Strategy (4 fallbacks):
- * 1. Exact name match (case-insensitive)
- * 2. Partial name match (LIKE search)
- * 3. Active ingredient match
- * 4. Not found - return suggestions
+ * ============================================================================
+ * 3. OUTPUT SCHEMA (Fields and Types)
+ * ============================================================================
+ * 
+ * SUCCESS RESPONSE:
+ * {
+ *   success: boolean                   // Always true for successful queries
+ *   data: {
+ *     medication_name: string          // Medication name as found in database
+ *     price: number                    // Current price (float, e.g., 12.90, 18.50)
+ *   }
+ * }
  *
- * Use Cases:
- * - Customer asks "How much is [medication]?"
- * - Customer asks "What's the price of [medication]?"
- * - Customer wants to compare prices
+ * ERROR RESPONSE:
+ * {
+ *   success: boolean                   // Always false for errors
+ *   error: string                      // Error code (see Error Handling section)
+ *   message: string                    // Human-readable error message
+ *   suggestions: Array<string> | Array<Object>  // Optional: Similar medications
+ *   hint: string                       // Optional: Helpful hint for user
+ * }
+ *
+ * ============================================================================
+ * 4. ERROR HANDLING
+ * ============================================================================
+ * MEDICATION_NOT_FOUND
+ *   - Trigger: Medication doesn't exist in database (after all fallback attempts)
+ *   - Behavior: Returns suggestions based on partial matches or active ingredients
+ *
+ * INVALID_INPUT
+ *   - Trigger: medication_name is missing, empty, or not a string
+ *   - Behavior: Returns validation error, no database query attempted
+ *
+ * SYSTEM_ERROR
+ *   - Trigger: Database connection failure or SQL query exception
+ *   - Behavior: Logs technical error, returns generic user-friendly message
+ *
+ * ============================================================================
+ * 5. FALLBACK BEHAVIOR
+ * ============================================================================
+ * 4-step search strategy when exact match fails:
+ *
+ * Step 1: Exact name match (case-insensitive)
+ *   - SQL: WHERE LOWER(name) = LOWER(?)
+ *   - Example: "Ibuprofen" → finds "Ibuprofen"
+ *
+ * Step 2: Partial name match (LIKE search)
+ *   - SQL: WHERE LOWER(name) LIKE '%' || LOWER(?) || '%'
+ *   - Example: "Ibu" → finds "Ibuprofen"
+ *
+ * Step 3: Active ingredient match
+ *   - SQL: WHERE LOWER(active_ingredient) LIKE '%' || LOWER(?) || '%'
+ *   - Example: "Paracetamol" → finds "Acamol" (contains Paracetamol)
+ *
+ * Step 4: Not found
+ *   - Returns MEDICATION_NOT_FOUND with empty suggestions
+ *   - Message: "Please check the spelling or ask a pharmacist"
+ *
+ * Note: All medication-searching tools use this identical fallback strategy.
+ *
+ * ============================================================================
  *
  * @module agent/tools/checkPrice
  */
 
 const db = require('../../database/db');
 
-/**
- * Check Price Function
- *
- * Retrieves the current price for a medication.
- *
- * @param {Object} params - Function parameters
- * @param {string} params.medication_name - Name of the medication (English)
- * @returns {Promise<Object>} Result object with price information
- *
- * @example
- * // Successful price lookup
- * const result = await checkPrice({ medication_name: 'Acamol' });
- * // Returns: { success: true, data: { medication_name: 'Acamol', price: 12.90 } }
- *
- * @example
- * // Medication not found with suggestions
- * const result = await checkPrice({ medication_name: 'Acamo' });
- * // Returns: { success: false, error: 'MEDICATION_NOT_FOUND', suggestions: ['Acamol'] }
- */
 async function checkPrice({ medication_name }) {
   try {
     // Validate input
@@ -59,7 +100,7 @@ async function checkPrice({ medication_name }) {
 
     // FALLBACK STRATEGY 1: Exact name match (case-insensitive)
     let medication = db.prepare(`
-      SELECT name, price, requires_prescription 
+      SELECT name, price
       FROM medications 
       WHERE LOWER(name) = ?
     `).get(searchTerm);
@@ -69,8 +110,7 @@ async function checkPrice({ medication_name }) {
         success: true,
         data: {
           medication_name: medication.name,
-          price: medication.price,
-          requires_prescription: medication.requires_prescription === 1
+          price: medication.price
         }
       };
     }

@@ -1,51 +1,93 @@
 /**
  * Check Stock Tool
  *
- * This tool checks the current stock availability for a specific medication.
- * It provides information about whether a medication is in stock and how many 
- * units are available.
+ * ============================================================================
+ * 1. NAME AND PURPOSE
+ * ============================================================================
+ * Name: check_stock
+ * 
+ * Purpose: Checks real-time inventory availability for medications. Returns 
+ * stock status and quantity available. Does NOT return pricing (use check_price) 
+ * or medication details (use get_medication_info) or if prescription required (use get_medication_info).
  *
- * Scope:
- * - Returns ONLY stock/availability information (in_stock, quantity)
- * - Does NOT return price (use check_price for that)
- * - Does NOT return medication details (use get_medication_info for that)
+ * ============================================================================
+ * 2. INPUTS (Parameters and Types)
+ * ============================================================================
+ * medication_name
+ *   - Type: string
+ *   - Required: Yes
+ *   - Description: Name of the medication to check stock for
+ *   - Examples: "Acamol", "Ibuprofen", "Omeprazole"
  *
- * Search Strategy (4 fallbacks):
- * 1. Exact name match (case-insensitive)
- * 2. Partial name match (LIKE search)
- * 3. Active ingredient match
- * 4. Not found - return suggestions
+ * ============================================================================
+ * 3. OUTPUT SCHEMA (Fields and Types)
+ * ============================================================================
+ * 
+ * SUCCESS RESPONSE:
+ * {
+ *   success: boolean              // Always true for successful queries
+ *   data: {
+ *     medication_name: string     // Medication name as found in database
+ *     in_stock: boolean           // true if quantity > 0, false otherwise
+ *     quantity_available: number  // Number of units in stock (integer)
+ *     status_message: string      // Human-readable status message
+ *   }
+ * }
  *
- * Use Cases:
- * - Customer asks "Do you have [medication]?"
- * - Customer asks "Is [medication] in stock?"
- * - Verifying availability for prescription refills
+ * ERROR RESPONSE:
+ * {
+ *   success: boolean              // Always false for errors
+ *   error: string                 // Error code (see Error Handling section)
+ *   message: string               // Human-readable error message
+ *   suggestions: Array<Object>    // Optional: Similar medications if found
+ *   hint: string                  // Optional: Helpful hint for user
+ * }
+ *
+ * ============================================================================
+ * 4. ERROR HANDLING
+ * ============================================================================
+ * MEDICATION_NOT_FOUND
+ *   - Trigger: Medication doesn't exist in database (after all fallback attempts)
+ *   - Behavior: Returns suggestions based on partial matches or active ingredients
+ *
+ * INVALID_INPUT
+ *   - Trigger: medication_name is missing, empty, or not a string
+ *   - Behavior: Returns validation error, no database query attempted
+ *
+ * DATABASE_ERROR
+ *   - Trigger: Database connection failure or SQL query exception
+ *   - Behavior: Logs technical error, returns generic user-friendly message
+ *
+ * ============================================================================
+ * 5. FALLBACK BEHAVIOR
+ * ============================================================================
+ * 4-step search strategy when exact match fails:
+ *
+ * Step 1: Exact name match (case-insensitive)
+ *   - SQL: WHERE LOWER(name) = LOWER(?)
+ *   - Example: "Ibuprofen" → finds "Ibuprofen"
+ *
+ * Step 2: Partial name match (LIKE search)
+ *   - SQL: WHERE LOWER(name) LIKE '%' || LOWER(?) || '%'
+ *   - Example: "Ibu" → finds "Ibuprofen"
+ *
+ * Step 3: Active ingredient match
+ *   - SQL: WHERE LOWER(active_ingredient) LIKE '%' || LOWER(?) || '%'
+ *   - Example: "Paracetamol" → finds "Acamol" (contains Paracetamol)
+ *
+ * Step 4: Not found
+ *   - Returns MEDICATION_NOT_FOUND with empty suggestions
+ *   - Message: "Please check the spelling or ask a pharmacist"
+ *
+ * Note: All medication-searching tools use this identical fallback strategy.
+ *
+ * ============================================================================
  *
  * @module agent/tools/checkStock
  */
 
 const db = require('../../database/db');
 
-/**
- * Check Stock Function
- *
- * Queries the database to check if a medication is in stock and returns
- * availability information.
- *
- * @param {Object} params - Function parameters
- * @param {string} params.medication_name - Name of the medication to check
- * @returns {Promise<Object>} Result object with stock information or suggestions
- *
- * @example
- * // Exact match found
- * const result = await checkStock({ medication_name: 'Acamol' });
- * // Returns: { success: true, data: { medication_name: 'Acamol', in_stock: true, quantity: 150 } }
- *
- * @example
- * // Medication not found, returns suggestions
- * const result = await checkStock({ medication_name: 'Acamo' });
- * // Returns: { success: false, error: 'MEDICATION_NOT_FOUND', suggestions: ['Acamol'] }
- */
 async function checkStock({ medication_name }) {
   try {
     // Validate input
@@ -61,7 +103,7 @@ async function checkStock({ medication_name }) {
     
     // FALLBACK STRATEGY 1: Exact name match (case-insensitive)
     let medication = db.prepare(`
-      SELECT name, stock_quantity, requires_prescription 
+      SELECT name, stock_quantity 
       FROM medications 
       WHERE LOWER(name) = ?
     `).get(searchTerm);
@@ -75,7 +117,6 @@ async function checkStock({ medication_name }) {
           medication_name: medication.name,
           in_stock: inStock,
           quantity_available: medication.stock_quantity,
-          requires_prescription: medication.requires_prescription === 1,
           status_message: inStock 
             ? `${medication.name} is in stock (${medication.stock_quantity} units available).`
             : `${medication.name} is currently out of stock.`

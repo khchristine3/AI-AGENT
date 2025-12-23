@@ -3,13 +3,11 @@
  *
  * This module defines Express routes for the pharmacy agent chat API.
  * It provides endpoints for interacting with the AI agent, including
- * streaming and non-streaming chat modes, health checks, and user data.
+ * streaming and non-streaming chat modes.
  *
  * Available Endpoints:
  * - POST /api/chat - Streaming chat with Server-Sent Events (SSE)
  * - POST /api/chat/simple - Non-streaming chat (returns complete response)
- * - GET /api/health - Health check endpoint
- * - GET /api/users - Retrieve list of users for UI dropdowns
  *
  * @module routes/chat
  */
@@ -221,87 +219,6 @@ router.post('/chat/simple', async (req, res) => {
       success: false,
       error: 'SERVER_ERROR',
       message: 'An error occurred while processing your request.'
-    });
-  }
-});
-
-/**
- * GET /api/health
- *
- * Health check endpoint to verify the API server is running.
- * Used by monitoring tools, load balancers, and deployment scripts
- * to check service availability.
- *
- * Response Format (JSON):
- * {
- *   "status": "ok",
- *   "timestamp": "2025-01-15T10:30:00.000Z",
- *   "service": "pharmacy-agent-backend"
- * }
- *
- * @route GET /api/health
- * @returns {Object} JSON object with health status and timestamp
- *
- * @example
- * const response = await fetch('/api/health');
- * const health = await response.json();
- * console.log(health.status); // "ok"
- */
-router.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    service: 'pharmacy-agent-backend'
-  });
-});
-
-/**
- * GET /api/users
- *
- * Retrieves a list of all users (patients) from the database.
- * Returns minimal user information suitable for UI dropdowns and
- * user selection interfaces.
- *
- * Response Format (JSON):
- * {
- *   "success": true,
- *   "data": [
- *     { "id": 1, "name": "David Cohen", "id_number": "123456789" },
- *     { "id": 2, "name": "Sarah Levi", "id_number": "234567890" },
- *     ...
- *   ]
- * }
- *
- * @route GET /api/users
- * @returns {Object} JSON object with array of users sorted by name
- *
- * @example
- * const response = await fetch('/api/users');
- * const { data: users } = await response.json();
- * users.forEach(user => console.log(user.name));
- */
-router.get('/users', (req, res) => {
-  try {
-    const db = require('../database/db');
-
-    // Query users with minimal fields for UI display
-    const users = db.prepare(`
-      SELECT id, name, id_number
-      FROM users
-      ORDER BY name
-    `).all();
-
-    res.json({
-      success: true,
-      data: users
-    });
-
-  } catch (error) {
-    console.error('Error fetching users:', error);
-    res.status(500).json({
-      success: false,
-      error: 'DATABASE_ERROR',
-      message: 'Failed to fetch users.'
     });
   }
 });
